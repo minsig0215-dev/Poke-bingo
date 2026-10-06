@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>포켓몬 빙고</title>
+<style>
+:root{--bg:#14233b;--panel:#1d3354;--ink:#f4f1e8;--mute:#9db0cc;--red:#e8433a;--yel:#ffd23f;--line:#2f4a75}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 50% -10%,#24406b,var(--bg) 60%);color:var(--ink);font-family:"Pretendard","Noto Sans KR",system-ui,sans-serif;min-height:100vh}
+header{display:flex;align-items:center;gap:12px;padding:14px 16px;flex-wrap:wrap}
+.ball{width:34px;height:34px;border-radius:50%;background:linear-gradient(var(--red) 46%,#222 46% 54%,#fff 54%);border:3px solid #222;position:relative;flex:none}
+.ball:after{content:"";position:absolute;inset:50% auto auto 50%;width:10px;height:10px;margin:-5px;border-radius:50%;background:#fff;border:3px solid #222}
+h1{font-size:22px;margin:0;font-weight:800}
+.stats{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:14px;font-weight:700}
+.chip b{color:var(--yel)}
+.bar{display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap;max-width:960px;margin:auto}
+input,button{font:inherit;border-radius:10px;border:1px solid var(--line);padding:10px 12px}
+input{background:#0f1c31;color:var(--ink);flex:1;min-width:130px}
+button{background:var(--red);color:#fff;border:0;font-weight:700;cursor:pointer}
+button.sub{background:var(--panel);border:1px solid var(--line)}
+#msg{padding:0 16px 8px;min-height:22px;font-weight:700;max-width:960px;margin:auto}
+.ok{color:#7be0a0}.no{color:#ff8b83}
+#grid{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;padding:0 8px 24px;max-width:960px;margin:auto}
+.cell{aspect-ratio:1;background:var(--panel);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:var(--mute);overflow:hidden;cursor:pointer;text-align:center;line-height:1.1}
+.cell img{width:92%;image-rendering:pixelated}
+.cell .n{font-size:11px;font-weight:700}
+.cell.on{background:#f4f1e8;color:#222;border-color:var(--yel);cursor:default}
+.cell.line{box-shadow:0 0 0 2px var(--yel) inset}
+.cell .h{color:var(--yel);font-size:11px;font-weight:800}
+.cell.sel{outline:2px solid var(--yel)}
+.card p{margin:6px 0;line-height:1.5}
+.card{max-width:960px;margin:0 auto 16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card h2{margin:0 0 10px;font-size:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.mute{color:var(--mute);font-size:13px}
+#load,.wrap{padding:30px 16px;text-align:center;color:var(--mute)}
+.login{max-width:340px;margin:60px auto;padding:0 16px}
+.login input{width:100%;margin-bottom:8px}
+.ans{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:4px;font-size:12px}
+.ans div{background:#0f1c31;padding:4px 6px;border-radius:6px}
+.ans i{color:var(--mute);font-style:normal}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:6px;border-bottom:1px solid var(--line);text-align:left}
+td input{min-width:0;width:70px;padding:6px}
+td button{padding:6px 10px}
+pre{white-space:pre-wrap;background:#0f1c31;padding:10px;border-radius:8px;font-size:12px;text-align:left}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+const ADMIN_NAME = '민식';            // 이 아이디로 가입한 계정이 관리자 (비번 1234로 가입)
+const START_COINS = 200, ANSWER_COST = 100, HINT_COST = 50, MAX_ID = 1025, SIZE = 100;
+
+
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const hash = s => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) } return h >>> 0 };
+const rng = seed => { let a = hash(seed); return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 } };
+const pick = seed => { const r = rng(seed), a = Array.from({length: MAX_ID}, (_, i) => i + 1); for (let i = 0; i < SIZE; i++) { const j = i + Math.floor(r() * (MAX_ID - i)); [a[i], a[j]] = [a[j], a[i]] } return a.slice(0, SIZE) };
+const norm = s => (s || '').normalize('NFC').toLowerCase().replace(/[\s\-_.'’:·]/g, '');
+const sprite = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+const EMAIL = n => 'u' + [...n.trim().toLowerCase()].map(c => c.codePointAt(0).toString(16)).join('_') + '@pokebingo.app';
+const DEC = e => e.split('@')[0].slice(1).split('_').map(h => String.fromCodePoint(parseInt(h, 16))).join('');
+const PW = p => p + '_pokebingo';   // 나중에 서버 인증의 비밀번호 길이 조건에 맞추려고 뒤에 붙여요
+let ids = [], names = {}, FAILED = 0;
+
+/* ───── 저장소 (Firebase 또는 임시 로컬) ─────
+   지금은 이 브라우저(localStorage)에만 저장돼요. 나중에 서버를 붙일 때는 이 블록만 바꾸면 돼요.
+   필요한 동작: 회원가입/로그인/로그아웃, users·config 문서 읽기/쓰기/실시간 구독, 숫자 증감, 배열 추가 */
+const firebaseConfig = { apiKey: 'AIzaSyA3P1F9TiREdTs3Zsg059-7Kv0Aymchi4A', authDomain: 'pokebingo-e03ca.firebaseapp.com', projectId: 'pokebingo-e03ca', appId: '1:57493481569:web:35334880b7b7475d4f2220' };   // ← Firebase 웹 앱 설정값을 여기에 붙여넣으면 서버 모드로 동작해요 (비워두면 이 기기에만 저장되는 임시 모드)
+const makeLocal = () => {
+const KEY = 'pb_localdb', subs = [], authSubs = [], auth = {}, db = {};
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {} } catch { return {} } };
+const persist = d => { try { localStorage.setItem(KEY, JSON.stringify(d)) } catch {} };
+const notify = () => subs.forEach(f => f());
+const doc = (_, col, id) => ({col, id});
+const collection = (_, col) => ({col});
+const increment = n => ({__inc: n});
+const arrayUnion = v => ({__union: v});
+const snap = ref => { const t = load()[ref.col] || {}; return ref.id ? {exists: () => !!t[ref.id], data: () => t[ref.id]} : {docs: Object.entries(t).map(([id, v]) => ({id, data: () => v}))} };
+const getDoc = async ref => snap(ref);
+const setDoc = async (ref, data) => { const d = load(); (d[ref.col] = d[ref.col] || {})[ref.id] = JSON.parse(JSON.stringify(data)); persist(d); notify() };
+const updateDoc = async (ref, upd) => {
+  const d = load(), cur = (d[ref.col] || {})[ref.id]; if (!cur) throw new Error('not found');
+  for (const [k, v] of Object.entries(upd)) {
+    const p = k.split('.'); let o = cur; p.slice(0, -1).forEach(x => o = o[x] = o[x] || {}); const last = p[p.length - 1];
+    if (v && v.__inc !== undefined) o[last] = (o[last] || 0) + v.__inc;
+    else if (v && v.__union !== undefined) { const a = o[last] || []; if (!a.includes(v.__union)) a.push(v.__union); o[last] = a }
+    else o[last] = v;
+  }
+  persist(d); notify();
+};
+const onSnapshot = (ref, cb) => { const f = () => cb(snap(ref)); subs.push(f); f(); window.addEventListener('storage', e => e.key === KEY && f()); return () => subs.splice(subs.indexOf(f), 1) };
+const sessionUser = () => { try { return JSON.parse(localStorage.getItem('pb_session')) } catch { return null } };
+const setUser = u => { try { u ? localStorage.setItem('pb_session', JSON.stringify(u)) : localStorage.removeItem('pb_session') } catch {} authSubs.forEach(f => f(u)) };
+const onAuthStateChanged = (_, cb) => { authSubs.push(cb); setTimeout(() => cb(sessionUser()), 0) };
+const createUserWithEmailAndPassword = async (_, email, pw) => {
+  const d = load(), a = d.accounts = d.accounts || {}; if (a[email]) throw {code: 'auth/email-already-in-use'};
+  const uid = 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); a[email] = {uid, pw: hash(pw)}; persist(d); setUser({uid, email});
+};
+const signInWithEmailAndPassword = async (_, email, pw) => { const a = (load().accounts || {})[email]; if (!a || a.pw !== hash(pw)) throw {code: 'auth/invalid-credential'}; setUser({uid: a.uid, email}) };
+const signOut = async () => setUser(null);
+  return {auth, db, doc, collection, increment, arrayUnion, getDoc, setDoc, updateDoc, onSnapshot, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut};
+};
+let B;
+if (firebaseConfig.apiKey) {
+  const U = 'https://www.gstatic.com/firebasejs/10.12.2/';
+  const [A, Au, Fs] = await Promise.all([import(U + 'firebase-app.js'), import(U + 'firebase-auth.js'), import(U + 'firebase-firestore.js')]);
+  const fb = A.initializeApp(firebaseConfig);
+  B = {auth: Au.getAuth(fb), db: Fs.getFirestore(fb), onAuthStateChanged: Au.onAuthStateChanged, createUserWithEmailAndPassword: Au.createUserWithEmailAndPassword, signInWithEmailAndPassword: Au.signInWithEmailAndPassword, signOut: Au.signOut,
+       doc: Fs.doc, collection: Fs.collection, getDoc: Fs.getDoc, setDoc: Fs.setDoc, updateDoc: Fs.updateDoc, onSnapshot: Fs.onSnapshot, increment: Fs.increment, arrayUnion: Fs.arrayUnion};
+} else B = makeLocal();
+const {auth, db, doc, collection, increment, arrayUnion, getDoc, setDoc, updateDoc, onSnapshot, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut} = B;
+
+async function loadNames(list, onProg){
+  try { names = JSON.parse(localStorage.getItem('pb_names2')) || {} } catch { names = {} }
+  const need = list.filter(i => !names[i]); let done = 0;
+  for (let k = 0; k < need.length; k += 20) {
+    await Promise.all(need.slice(k, k + 20).map(async id => {
+      for (let t = 0; t < 3; t++) {
+        try {
+          const j = await (await fetch(`https://pokeapi.co/api/v2/pokemon-species/${id}`)).json();
+          const f = l => (j.names.find(n => n.language.name === l) || {}).name || '';
+          const fe = j.flavor_text_entries || [], fl = (fe.find(e => e.language.name === 'ko') || fe.find(e => e.language.name === 'en') || {}).flavor_text || '';
+          names[id] = {ko: f('ko'), en: f('en'), col: (j.color || {}).name, hab: (j.habitat || {}).name, gen: +((j.generation || {}).url || '').split('/').filter(Boolean).pop() || 0,
+            leg: j.is_legendary, myth: j.is_mythical, baby: j.is_baby, evo: !!j.evolves_from_species, flv: fl.replace(/\s+/g, ' ')}; break;
+        } catch { await new Promise(r => setTimeout(r, 500 * (t + 1))) }
+      }
+      onProg(++done, need.length);
+    }));
+  }
+  try { localStorage.setItem('pb_names2', JSON.stringify(names)) } catch {}
+  list.forEach(i => { if (!names[i]) names[i] = {ko: '', en: '', flv: ''} });
+  return list.filter(i => !names[i].ko && !names[i].en).length;
+}
+const nm = id => (names[id] && (names[id].ko || names[id].en)) || '#' + id;
+function lines(rev){
+  const on = new Set(rev.map(id => ids.indexOf(id))), L = [], R = [...Array(10).keys()];
+  R.forEach(r => L.push(R.map(c => r * 10 + c))); R.forEach(c => L.push(R.map(r => r * 10 + c)));
+  L.push(R.map(i => i * 11), R.map(i => i * 9 + 9));
+  return L.filter(l => l.every(i => on.has(i)));
+}
+
+/* ───── 로그인 ───── */
+function loginView(){
+  app.innerHTML = `<div class="login"><div style="display:flex;align-items:center;gap:12px;margin-bottom:18px"><div class="ball"></div><h1>포켓몬 빙고</h1></div>
+  <input id="u" placeholder="아이디 (한글/영문/숫자 2~16자)" autocomplete="username"><input id="p" type="password" placeholder="비밀번호 (4자 이상)" autocomplete="current-password">
+  <div class="row"><button id="in" style="flex:1">로그인</button><button id="up" class="sub" style="flex:1">회원가입</button></div><div id="msg" style="padding:0"></div></div>`;
+  const err = e => { const m = {'auth/invalid-credential': '아이디나 비밀번호가 맞지 않아요.', 'auth/email-already-in-use': '이미 있는 아이디예요.', 'auth/weak-password': '비밀번호는 6자 이상이어야 해요.'}; $('#msg').innerHTML = `<span class="no">${m[e.code] || '문제가 생겼어요: ' + e.code}</span>` };
+  const get = () => { const u = $('#u').value.trim(); if (!/^[가-힣a-zA-Z0-9_]{2,16}$/.test(u)) { $('#msg').innerHTML = '<span class="no">아이디는 한글/영문/숫자/_ 2~16자예요.</span>'; return null } if ($('#p').value.length < 4) { $('#msg').innerHTML = '<span class="no">비밀번호는 4자 이상이어야 해요.</span>'; return null } return [EMAIL(u), PW($('#p').value)] };
+  $('#in').onclick = () => { const c = get(); c && signInWithEmailAndPassword(auth, ...c).catch(err) };
+  $('#up').onclick = () => { const c = get(); c && createUserWithEmailAndPassword(auth, ...c).catch(err) };
+}
+
+/* ───── 플레이어 ───── */
+let TYPES = {};
+const TYPE_RIDDLE = {normal:'평범해 보이지만 어디서나 사랑받아', fire:'내 몸에는 뜨거운 불꽃이 있어', water:'나는 물과 아주 가까운 곳에 살아', grass:'햇빛과 흙의 기운을 받으며 자라', electric:'온몸에 찌릿찌릿 전기가 흘러', ice:'차가운 눈과 얼음 속에서 왔어', fighting:'주먹과 발차기가 특기야', poison:'내 몸에는 독이 숨어 있어', ground:'땅속과 모래밭이 편해', flying:'하늘을 자유롭게 날아다녀', psychic:'마음속을 꿰뚫는 초능력이 있어', bug:'작은 벌레들의 세계에서 왔어', rock:'바위처럼 단단하고 묵직해', ghost:'어둠 속에서 으스스하게 나타나', dragon:'전설 속 용의 힘을 지녔어', dark:'어둠과 그림자 속에 숨어 있어', steel:'강철처럼 단단한 몸이야', fairy:'요정처럼 반짝이고 신비로워'};
+const COLOR = {black:'검정', blue:'파랑', brown:'갈색', gray:'회색', green:'초록', pink:'분홍', purple:'보라', red:'빨강', white:'하양', yellow:'노랑'};
+const HAB = {cave:'동굴', forest:'숲', grassland:'초원', mountain:'산', rare:'보기 드문 곳', 'rough-terrain':'험한 지형', sea:'바다', urban:'도시', 'waters-edge':'물가'};
+const CUSTOM = {483:'난 시간과 관련이 있어', 484:'난 공간과 관련이 있어', 150:'난 사람의 손으로 만들어졌어'};
+
+async function loadTypes(){
+  try { TYPES = JSON.parse(localStorage.getItem('pb_types')) || {} } catch { TYPES = {} }
+  if (Object.keys(TYPES).length) return;
+  await Promise.all(Object.keys(TYPE_RIDDLE).map(async t => {
+    for (let k = 0; k < 3; k++) {
+      try {
+        const j = await (await fetch(`https://pokeapi.co/api/v2/type/${t}`)).json();
+        j.pokemon.forEach(p => { const id = +p.pokemon.url.split('/').filter(Boolean).pop(); if (id <= MAX_ID) (TYPES[id] = TYPES[id] || []).push(t) });
+        break;
+      } catch {}
+    }
+  }));
+  try { localStorage.setItem('pb_types', JSON.stringify(TYPES)) } catch {}
+}
+
+function hintsOf(id){
+  const d = names[id], t = (TYPES[id] || []).map(x => TYPE_RIDDLE[x]).filter(Boolean);
+  const h1 = [CUSTOM[id], ...t].filter(Boolean).join(' / ') || '평범해 보이지만 특별한 포켓몬이야';
+  const l2 = [];
+  if (d.hab && HAB[d.hab]) l2.push(`나는 ${HAB[d.hab]}에서 자주 보여`);
+  if (d.col && COLOR[d.col]) l2.push(`몸 색깔은 ${COLOR[d.col]} 계열이야`);
+  if (d.gen) l2.push(`제${d.gen}세대에 처음 나왔어`);
+  if (d.myth) l2.push('나는 환상의 포켓몬이야'); else if (d.leg) l2.push('나는 전설의 포켓몬이야');
+  if (d.baby) l2.push('나는 아직 아기야');
+  if (d.evo) l2.push('나는 진화해서 이 모습이 됐어');
+  const flv = [d.ko, d.en].filter(Boolean).reduce((s, n) => s.split(n).join('○○○'), d.flv || '');
+  return [h1, l2.join(' · ') || '특별히 알려줄 게 없어', flv || '더 알려줄 게 없어'];
+}
+
+function playerView(user){
+  const ref = doc(db, 'users', user.uid);
+  app.innerHTML = `<header><div class="ball"></div><h1>포켓몬 빙고</h1><div class="stats"><span class="chip">${DEC(user.email)}</span><span class="chip">공개 <b id="s1"></b>/100</span><span class="chip">빙고 <b id="s2"></b></span><span class="chip">코인 <b id="s3"></b></span>${DEC(user.email) === ADMIN_NAME.toLowerCase() ? '<button class="sub" id="ad">관리자 화면</button>' : ''}<button class="sub" id="out">나가기</button></div></header>
+  <form class="bar" id="f" autocomplete="off"><input id="ans" placeholder="정답 입력 (한글 / 영어)" autocomplete="off" enterkeyhint="send"><button id="go" type="submit">입력 (${ANSWER_COST}코인)</button></form><div id="msg"></div>
+  <div class="card" id="hp" style="margin:0 auto 12px;width:calc(100% - 16px)"></div><div id="grid"></div>`;
+  let G = {rev: [], hints: {}, coins: 0}, sel = 0;
+  const msg = (t, ok) => { $('#msg').innerHTML = `<span class="${ok ? 'ok' : 'no'}">${t}</span>` };
+  const draw = () => {
+    const rev = G.rev.filter(i => ids.includes(i)), ln = lines(rev), lit = new Set(ln.flat());
+    $('#s1').textContent = rev.length; $('#s2').textContent = ln.length; $('#s3').textContent = G.coins;
+    $('#grid').innerHTML = ids.map((id, i) => rev.includes(id)
+      ? `<div class="cell on ${lit.has(i) ? 'line' : ''}"><img src="${sprite(id)}" alt=""><span>${nm(id)}</span></div>`
+      : `<div class="cell ${lit.has(i) ? 'line' : ''} ${sel === id ? 'sel' : ''}" data-id="${id}"><span class="n">${i + 1}</span>${G.hints[id] ? `<span class="h">💡${G.hints[id]}</span>` : ''}</div>`).join('');
+    if (rev.includes(sel)) sel = 0;
+    if (!sel) { $('#hp').innerHTML = `<div class="mute">칸을 눌러 힌트를 볼 수 있어요. 힌트는 칸마다 3단계, 한 단계에 ${HINT_COST}코인이에요. 정답 입력은 한 번에 ${ANSWER_COST}코인이에요.</div>`; return }
+    const lv = G.hints[sel] || 0, hs = hintsOf(sel);
+    $('#hp').innerHTML = `<h2>${ids.indexOf(sel) + 1}번 칸</h2>` + hs.slice(0, lv).map((t, i) => `<p>💡 ${i + 1}단계. ${t}</p>`).join('') +
+      (lv < 3 ? `<button id="buy">${lv + 1}단계 힌트 보기 (${HINT_COST}코인)</button>` : '<div class="mute">모든 힌트를 열었어요.</div>');
+    const b = $('#buy'); if (b) b.onclick = () => {
+      if (G.coins < HINT_COST) return msg('코인이 부족해요.', false);
+      b.disabled = true;
+      updateDoc(ref, {coins: increment(-HINT_COST), ['hints.' + sel]: increment(1)}).catch(() => { b.disabled = false; msg('저장하지 못했어요. 다시 시도해 주세요.', false) });
+    };
+  };
+  onSnapshot(ref, s => { if (s.exists()) { G = {rev: [], hints: {}, coins: 0, ...s.data()}; draw() } });
+  $('#grid').onclick = e => { const c = e.target.closest('.cell'); if (!c || !c.dataset.id) return; sel = +c.dataset.id; draw() };
+  const submit = () => {
+    const v = norm($('#ans').value); if (!v) return;
+    const match = i => norm(names[i].ko) === v || norm(names[i].en) === v;
+    $('#ans').value = ''; $('#ans').focus(); setTimeout(() => { $('#ans').value = '' }, 30);
+    if (ids.some(i => G.rev.includes(i) && match(i))) return msg('이미 맞춘 포켓몬이에요.', false);
+    if (G.coins < ANSWER_COST) return msg(`정답 입력에는 코인 ${ANSWER_COST}개가 필요해요.`, false);
+    const id = ids.find(match), up = {coins: increment(-ANSWER_COST)}; if (id) up.rev = arrayUnion(id);
+    updateDoc(ref, up).then(() => msg(id ? `정답! ${nm(id)} 공개` : `땡! 이 빙고판에 없는 이름이에요. (-${ANSWER_COST}코인)`, !!id)).catch(() => msg('저장하지 못했어요.', false));
+  };
+  $('#f').onsubmit = e => { e.preventDefault(); submit() }; $('#ans').onkeydown = e => {
+    // 한글 조합 중 Enter: 마지막 글자를 확정한 뒤 제출 (그 외 Enter/모바일 키보드는 form 제출이 처리)
+    if (!(e.isComposing || e.keyCode === 229) || (e.key !== 'Enter' && e.code !== 'Enter' && e.code !== 'NumpadEnter')) return;
+    e.preventDefault(); const el = e.target;
+    el.blur(); setTimeout(() => { submit(); el.focus() }, 0);
+  };
+  const ad = $('#ad'); if (ad) ad.onclick = () => { location.hash = ''; location.reload() };
+  if (FAILED) msg(`포켓몬 ${FAILED}마리의 정보를 불러오지 못했어요. 새로고침하면 다시 시도해요.`, false);
+  $('#out').onclick = () => signOut(auth).then(() => location.reload());
+}
+
+/* ───── 관리자 ───── */
+function adminView(seed){
+  app.innerHTML = `<header><div class="ball"></div><h1>관리자</h1><div class="stats"><button class="sub" id="pl">플레이 화면</button><button class="sub" id="out">나가기</button></div></header>
+  <div class="card"><h2>유저 / 코인 지급</h2><table><thead><tr><th>아이디</th><th>공개</th><th>빙고</th><th>코인</th><th>지급(음수는 차감)</th><th></th></tr></thead><tbody id="ul"></tbody></table><div class="mute" id="none"></div></div>
+  <div class="card"><h2>빙고판 시드</h2><div class="row"><input id="sd" value="${seed}"><button id="setsd">적용</button><button class="sub" id="rnd">새로 뽑기</button></div><div class="mute">시드를 바꾸면 모든 유저의 빙고판이 바뀌어요. 지금 시드: ${seed}</div></div>
+  <div class="card"><h2>정답 보기</h2><div class="ans">${ids.map((id, i) => `<div><i>${i + 1}</i> ${names[id].ko || '?'}<br><i>${names[id].en}</i></div>`).join('')}</div></div>`;
+  $('#pl').onclick = () => { location.hash = '#play'; location.reload() };
+  $('#out').onclick = () => signOut(auth).then(() => location.reload());
+  const setSeed = v => v && setDoc(doc(db, 'config', 'game'), {seed: v}).then(() => location.reload());
+  $('#setsd').onclick = () => setSeed($('#sd').value.trim());
+  $('#rnd').onclick = () => setSeed(Math.random().toString(36).slice(2, 8));
+  onSnapshot(collection(db, 'users'), s => {
+    const rows = s.docs.map(d => ({id: d.id, ...d.data()}));
+    $('#none').textContent = rows.length ? '' : '아직 가입한 유저가 없어요.';
+    const keep = {}; document.querySelectorAll('#ul input').forEach(i => keep[i.dataset.u] = i.value);
+    $('#ul').innerHTML = rows.map(u => { const rev = (u.rev || []).filter(i => ids.includes(i)); return `<tr><td>${u.name || '?'}</td><td>${rev.length}</td><td>${lines(rev).length}</td><td><b>${u.coins ?? 0}</b></td>
+      <td><input type="number" data-u="${u.id}" value="${keep[u.id] ?? 100}"> <button data-g="${u.id}">지급</button></td><td><button class="sub" data-r="${u.id}">초기화</button></td></tr>` }).join('');
+  });
+  $('#ul').onclick = e => {
+    const g = e.target.dataset.g, r = e.target.dataset.r;
+    if (g) { const n = parseInt(document.querySelector(`input[data-u="${g}"]`).value); if (n) updateDoc(doc(db, 'users', g), {coins: increment(n)}) }
+    if (r && confirm('이 유저의 진행 상황(공개/힌트)을 초기화할까요?')) updateDoc(doc(db, 'users', r), {rev: [], hints: {}});
+  };
+}
+
+/* ───── 시작 ───── */
+loginView();
+onAuthStateChanged(auth, async user => {
+  if (!user) return loginView();
+  app.innerHTML = '<div id="load">포켓몬을 불러오는 중… <b id="p"></b></div>';
+  let seed = 'pokemon';
+  try { const c = await getDoc(doc(db, 'config', 'game')); if (c.exists()) seed = c.data().seed } catch {}
+  ids = pick(seed);
+  FAILED = await loadNames(ids, (d, t) => { $('#p') && ($('#p').textContent = `${d}/${t}`) });
+  const name = DEC(user.email);
+  await loadTypes();
+  if (name === ADMIN_NAME.toLowerCase() && location.hash !== '#play') return adminView(seed);
+  const ref = doc(db, 'users', user.uid);
+  try { if (!(await getDoc(ref)).exists()) await setDoc(ref, {name, coins: START_COINS, rev: [], hints: {}}) } catch {}
+  playerView(user);
+});
+</script>
+</body>
+</html>
